@@ -1,0 +1,157 @@
+import React, { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+
+const FPSShooter = () => {
+  const mountRef = useRef(null);
+  const sceneRef = useRef(null);
+  const cameraRef = useRef(null);
+  const rendererRef = useRef(null);
+  const isLockedRef = useRef(false);
+
+  useEffect(() => {
+    // Scene setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+    sceneRef.current = scene;
+
+    // Camera setup (First Person)
+    const camera = new THREE.PerspectiveCamera(
+      75, // Field of view
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.1, // Near clipping plane
+      1000 // Far clipping plane
+    );
+    camera.position.set(0, 1.6, 0); // Eye level height (1.6 meters)
+    cameraRef.current = camera;
+
+    // Renderer setup
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    rendererRef.current = renderer;
+
+    // Add renderer to DOM
+    if (mountRef.current) {
+      mountRef.current.appendChild(renderer.domElement);
+    }
+
+    // Create ground plane
+    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    const groundMaterial = new THREE.MeshLambertMaterial({ 
+      color: 0x8B4513 // Brown color
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Add some basic lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6); // Soft ambient light
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 20, 5);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    scene.add(directionalLight);
+
+    // Mouse controls for looking around
+    const onMouseMove = (event) => {
+      if (!isLockedRef.current) return;
+
+      const movementX = event.movementX || 0;
+      const movementY = event.movementY || 0;
+
+      // Horizontal rotation (Y-axis) - rotate around the Y axis
+      camera.rotateY(-movementX * 0.002);
+      
+      // Vertical rotation (X-axis) - get current rotation and apply limits
+      const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+      euler.setFromQuaternion(camera.quaternion);
+      euler.x -= movementY * 0.002;
+      euler.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, euler.x));
+      camera.quaternion.setFromEuler(euler);
+    };
+
+    // Pointer lock controls
+    const onClick = () => {
+      renderer.domElement.requestPointerLock();
+    };
+
+    const onPointerLockChange = () => {
+      isLockedRef.current = document.pointerLockElement === renderer.domElement;
+    };
+
+    // Event listeners
+    renderer.domElement.addEventListener('click', onClick);
+    document.addEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener('mousemove', onMouseMove);
+
+    // Handle window resize
+    const onWindowResize = () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+    window.addEventListener('resize', onWindowResize);
+
+    // Animation loop
+    const animate = () => {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener('resize', onWindowResize);
+      document.removeEventListener('pointerlockchange', onPointerLockChange);
+      document.removeEventListener('mousemove', onMouseMove);
+      if (renderer.domElement) {
+        renderer.domElement.removeEventListener('click', onClick);
+      }
+      
+      if (mountRef.current && renderer.domElement && mountRef.current.contains(renderer.domElement)) {
+        mountRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, []);
+
+  return (
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        color: 'white',
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '16px',
+        background: 'rgba(0,0,0,0.5)',
+        padding: '10px',
+        borderRadius: '5px',
+        zIndex: 1000
+      }}>
+        Click to look around with mouse
+      </div>
+      {/* Crosshair */}
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: '4px',
+        height: '4px',
+        backgroundColor: 'white',
+        borderRadius: '50%',
+        pointerEvents: 'none',
+        zIndex: 1000
+      }} />
+    </div>
+  );
+};
+
+export default FPSShooter;
