@@ -59,13 +59,20 @@ const FPSShooter = () => {
     const PI_2 = Math.PI / 2;
 
     // Movement variables
-    const moveSpeed = 0.15; // Increased speed
+    const moveSpeed = 0.12; // Slightly slower for drunk effect
     const keys = {
       w: false,
       a: false,
       s: false,
       d: false
     };
+
+    // Drunk effect variables
+    let drunkTime = 0;
+    const drunkIntensity = 0.3; // How drunk (0 = sober, 1 = very drunk)
+    const swayAmount = 0.05;
+    const bobAmount = 0.03;
+    const rotationSwayAmount = 0.02;
 
     // Mouse movement handler
     const onMouseMove = (event) => {
@@ -110,57 +117,94 @@ const FPSShooter = () => {
       
       // Check if any movement keys are pressed
       const isMoving = keys.w || keys.a || keys.s || keys.d;
-      
-      if (!isMoving) return;
 
       // Calculate movement direction
       let moveX = 0;
       let moveZ = 0;
 
-      // Forward/backward movement
-      if (keys.w) moveZ -= 1;
-      if (keys.s) moveZ += 1;
-      
-      // Left/right movement  
-      if (keys.a) moveX -= 1;
-      if (keys.d) moveX += 1;
+      if (isMoving) {
+        // Forward/backward movement
+        if (keys.w) moveZ -= 1;
+        if (keys.s) moveZ += 1;
+        
+        // Left/right movement  
+        if (keys.a) moveX -= 1;
+        if (keys.d) moveX += 1;
 
-      // Normalize diagonal movement
-      if (moveX !== 0 && moveZ !== 0) {
-        moveX *= 0.707; // 1/sqrt(2)
-        moveZ *= 0.707;
+        // Normalize diagonal movement
+        if (moveX !== 0 && moveZ !== 0) {
+          moveX *= 0.707; // 1/sqrt(2)
+          moveZ *= 0.707;
+        }
+
+        // Add drunk stumbling to movement
+        const stumbleX = (Math.sin(drunkTime * 1.5) + Math.sin(drunkTime * 2.3)) * 0.3;
+        const stumbleZ = (Math.cos(drunkTime * 1.2) + Math.cos(drunkTime * 1.8)) * 0.3;
+        
+        moveX += stumbleX * drunkIntensity;
+        moveZ += stumbleZ * drunkIntensity;
+
+        // Apply movement speed with some randomness
+        const speedVariation = 1 + (Math.random() - 0.5) * 0.3 * drunkIntensity;
+        moveX *= moveSpeed * speedVariation;
+        moveZ *= moveSpeed * speedVariation;
+
+        // Get camera's forward and right vectors
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        
+        const cameraRight = new THREE.Vector3();
+        cameraRight.crossVectors(cameraDirection, camera.up).normalize();
+
+        // Calculate final movement vector
+        const finalMovement = new THREE.Vector3();
+        finalMovement.addScaledVector(cameraDirection, -moveZ); // Forward/backward
+        finalMovement.addScaledVector(cameraRight, moveX); // Left/right
+        finalMovement.y = 0; // Keep movement horizontal
+
+        // Apply movement
+        camera.position.add(finalMovement);
       }
 
-      // Apply movement speed
-      moveX *= moveSpeed;
-      moveZ *= moveSpeed;
-
-      // Get camera's forward and right vectors
-      const cameraDirection = new THREE.Vector3();
-      camera.getWorldDirection(cameraDirection);
+      // Always apply drunk effects (even when not moving)
+      const baseHeight = 1.6;
       
-      const cameraRight = new THREE.Vector3();
-      cameraRight.crossVectors(cameraDirection, camera.up).normalize();
-
-      // Calculate final movement vector
-      const finalMovement = new THREE.Vector3();
-      finalMovement.addScaledVector(cameraDirection, -moveZ); // Forward/backward
-      finalMovement.addScaledVector(cameraRight, moveX); // Left/right
-      finalMovement.y = 0; // Keep movement horizontal
-
-      // Apply movement
-      camera.position.add(finalMovement);
-      camera.position.y = 1.6; // Keep camera at eye level
+      // Head bobbing and swaying
+      const swayX = Math.sin(drunkTime * 0.8) * swayAmount * drunkIntensity;
+      const swayZ = Math.cos(drunkTime * 0.6) * swayAmount * drunkIntensity;
+      const bob = Math.sin(drunkTime * 1.5) * bobAmount * drunkIntensity;
       
-      console.log('Movement applied:', {
-        keys: Object.keys(keys).filter(k => keys[k]).join('+') || 'none',
-        direction: { x: finalMovement.x.toFixed(3), z: finalMovement.z.toFixed(3) },
-        position: { 
-          x: camera.position.x.toFixed(2), 
-          y: camera.position.y.toFixed(2), 
-          z: camera.position.z.toFixed(2) 
-        }
-      });
+      // Apply drunk camera position effects
+      camera.position.x += swayX * 0.1;
+      camera.position.z += swayZ * 0.1;
+      camera.position.y = baseHeight + bob;
+
+      // Drunk head rotation sway
+      const currentEuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+      const rollSway = Math.sin(drunkTime * 0.7) * rotationSwayAmount * drunkIntensity;
+      const pitchSway = Math.cos(drunkTime * 0.9) * rotationSwayAmount * 0.5 * drunkIntensity;
+      
+      // Apply subtle head roll and pitch
+      currentEuler.z = rollSway; // Head tilt/roll
+      currentEuler.x += pitchSway * 0.1; // Slight pitch variation
+      
+      camera.quaternion.setFromEuler(currentEuler);
+      
+      if (isMoving) {
+        console.log('Drunk movement applied:', {
+          keys: Object.keys(keys).filter(k => keys[k]).join('+') || 'none',
+          position: { 
+            x: camera.position.x.toFixed(2), 
+            y: camera.position.y.toFixed(2), 
+            z: camera.position.z.toFixed(2) 
+          },
+          drunkEffects: {
+            sway: { x: swayX.toFixed(3), z: swayZ.toFixed(3) },
+            bob: bob.toFixed(3),
+            roll: rollSway.toFixed(3)
+          }
+        });
+      }
     };
 
     // Pointer lock handlers
@@ -209,6 +253,9 @@ const FPSShooter = () => {
     // Animation loop
     const animate = () => {
       requestAnimationFrame(animate);
+      
+      // Update drunk time for effects
+      drunkTime += 0.016; // Roughly 60fps timing
       
       // Update movement
       updateMovement();
@@ -271,59 +318,61 @@ const FPSShooter = () => {
         boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
       }}>
         <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#00ff00' }}>
-          FPS Controls:
+          🍺 Drunk FPS Controls:
         </div>
         <div>🖱️ Click canvas to lock mouse</div>
-        <div>👀 Move mouse to look around</div>
-        <div>⌨️ Use WASD to move</div>
+        <div>👀 Move mouse to look around (with sway!)</div>
+        <div>⌨️ Use WASD to stumble around</div>
         <div>🔓 Press ESC to unlock</div>
         <div style={{ marginTop: '10px', fontSize: '14px', color: '#ccc' }}>
-          White cube spins in front, colored cubes scattered around
+          Experience wobbly movement, head bobbing, and unsteady walking
         </div>
         <div style={{ marginTop: '5px', fontSize: '12px', color: '#aaa' }}>
-          Check console for movement debug info
+          Check console for drunk movement debug info
         </div>
       </div>
       
       {/* Crosshair */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
         width: '4px',
         height: '4px',
-        backgroundColor: 'white',
+        backgroundColor: '#ff0000',
         borderRadius: '50%',
         pointerEvents: 'none',
-        zIndex: 1000,
-        boxShadow: '0 0 0 2px rgba(0,0,0,0.5)'
+        zIndex: 9999,
+        boxShadow: '0 0 0 2px rgba(255,255,255,0.8), 0 0 8px rgba(255,0,0,0.6)'
       }} />
       
       {/* Additional crosshair lines */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
-        width: '20px',
+        width: '24px',
         height: '2px',
-        backgroundColor: 'white',
+        backgroundColor: '#ff0000',
         pointerEvents: 'none',
-        zIndex: 999,
-        opacity: 0.8
+        zIndex: 9998,
+        opacity: 0.9,
+        boxShadow: '0 0 4px rgba(255,255,255,0.8)'
       }} />
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
         width: '2px',
-        height: '20px',
-        backgroundColor: 'white',
+        height: '24px',
+        backgroundColor: '#ff0000',
         pointerEvents: 'none',
-        zIndex: 999,
-        opacity: 0.8
+        zIndex: 9998,
+        opacity: 0.9,
+        boxShadow: '0 0 4px rgba(255,255,255,0.8)'
       }} />
     </div>
   );
